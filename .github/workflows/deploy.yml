@@ -1,0 +1,43 @@
+name: 🚀 Deploy NestJS Clinica Psiquiatrica API to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Copy project files to VPS via SCP
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_KEY }}
+        source: "."
+        target: "/var/www/clinica-psiquiatrica-api"
+
+    - name: Executing remote SSH commands to deploy
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_KEY }}
+        script: |
+          set -e
+          cd /var/www/clinica-psiquiatrica-api
+          
+          # Inyectar variables de entorno actualizadas desde los Secrets de GitHub
+          printf "%s" "${{ secrets.ENV_FILE }}" > .env
+
+          # Instalar dependencias de producción y compilar la solución
+          npm install
+          npm run build
+
+          # Reinicio controlado en PM2 para evitar caídas de servicio
+          pm2 reload clinica-api || pm2 start dist/main.js --name "clinica-api"
+          pm2 save
