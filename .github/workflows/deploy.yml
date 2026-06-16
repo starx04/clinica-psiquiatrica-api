@@ -12,42 +12,41 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Parse Connection Variables
-      id: parse_vars
-      run: |
-        # Extraer de forma limpia la IP y el Usuario desde tu secret VARIABLES_AX
-        HOST=$(echo "${{ secrets.VARIABLES_AX }}" | grep '^VPS_HOST=' | cut -d'=' -f2 | tr -d '\r ')
-        USER=$(echo "${{ secrets.VARIABLES_AX }}" | grep '^VPS_USER=' | cut -d'=' -f2 | tr -d '\r ')
-        
-        echo "vps_host=$HOST" >> $GITHUB_OUTPUT
-        echo "vps_user=$USER" >> $GITHUB_OUTPUT
-
     - name: Copy project files to VPS via SCP
       uses: appleboy/scp-action@v0.1.7
       with:
-        host: ${{ steps.parse_vars.outputs.vps_host }}
-        username: ${{ steps.parse_vars.outputs.vps_user }}
-        key: ${{ secrets.VPS_KEY }}
+        host: 20.63.51.70
+        username: azureuser
+        key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCi4Wu14h5imE+y/pG6QoWAo3TpTEOD0Jm4bzD9CVMuAZCsxL7vHtCP8i2Uh1aXT9olSuPWclUQU7JGl7wkRqiho7LO/kRh51VcuBF7YG0GdU2wUYBwRqW7fukSL3qjCc5dJ66TO08ToBoLbqRPwZVJXJaiQlSwxuGBq4xoMjKCEdWVUTorkg3QUUCQKTbBT2vzFjDGtom6VDCPrNheptwIHFZeTzXKzEzfFD3zJjETyz8u2zZRsQZZkTFXriVOnm4pql5JdAPHoTfmv8YSMAXJ21s5snzN+3BUlusT0w9rGspmTReMTVkFKVJXKijdEOu6dTQQ0LUNX9LbQP8TUDh+XHf9CrFQPxmcF+liXUKqGf9Vfkxu3HuuEv6GYXloqBAtdwTOv9GTK1eLs066AaAdaqLNDejDnunlR+8ackz6rI1IjqLc5XTI93j521alg1DqV8XnfAzxr5Xi3m69/Qa2mwPumn4LvCUOk0eGn5b+urSQnw/+Iq9idfIm7p3OkQk= generated-by-azure
         source: "."
         target: "/var/www/clinica-psiquiatrica-api"
 
     - name: Executing remote SSH commands to deploy
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ steps.parse_vars.outputs.vps_host }}
-        username: ${{ steps.parse_vars.outputs.vps_user }}
-        key: ${{ secrets.VPS_KEY }}
+        host: 20.63.51.70
+        username: azureuser
+        key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCi4Wu14h5imE+y/pG6QoWAo3TpTEOD0Jm4bzD9CVMuAZCsxL7vHtCP8i2Uh1aXT9olSuPWclUQU7JGl7wkRqiho7LO/kRh51VcuBF7YG0GdU2wUYBwRqW7fukSL3qjCc5dJ66TO08ToBoLbqRPwZVJXJaiQlSwxuGBq4xoMjKCEdWVUTorkg3QUUCQKTbBT2vzFjDGtom6VDCPrNheptwIHFZeTzXKzEzfFD3zJjETyz8u2zZRsQZZkTFXriVOnm4pql5JdAPHoTfmv8YSMAXJ21s5snzN+3BUlusT0w9rGspmTReMTVkFKVJXKijdEOu6dTQQ0LUNX9LbQP8TUDh+XHf9CrFQPxmcF+liXUKqGf9Vfkxu3HuuEv6GYXloqBAtdwTOv9GTK1eLs066AaAdaqLNDejDnunlR+8ackz6rI1IjqLc5XTI93j521alg1DqV8XnfAzxr5Xi3m69/Qa2mwPumn4LvCUOk0eGn5b+urSQnw/+Iq9idfIm7p3OkQk= generated-by-azure
         script: |
           set -e
           cd /var/www/clinica-psiquiatrica-api
           
-          # Filtra las variables exclusivas de la App para armar el .env limpio sin las de VPS
-          echo "${{ secrets.VARIABLES_AX }}" | grep -v '^VPS_' > .env
+          # Crear el archivo .env directamente con tus credenciales limpias
+          cat << 'EOF' > .env
+          PORT=3000
+          DB_HOST=localhost
+          DB_PORT=5432
+          DB_USER=antoni_user_pg
+          DB_PASS=antoni_secure_pass_2026
+          DB_NAME=clinica_psic_db
+          JWT_SECRET=antoni_jwt_secret_vps_2026
+          MONGO_URI=mongodb://antoni_user_mongo:antoni_mongo_pass_2026@localhost:27017/clinica_psic_mongo?authSource=admin
+          EOF
 
-          # Instalar dependencias y compilar
+          # Instalar dependencias de producción y compilar la solución
           npm install
           npm run build
 
-          # Reinicio en PM2
+          # Reinicio controlado en PM2 para evitar caídas de servicio
           pm2 reload clinica-api || pm2 start dist/main.js --name "clinica-api"
           pm2 save
