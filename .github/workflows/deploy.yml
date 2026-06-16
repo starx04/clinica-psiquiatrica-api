@@ -12,11 +12,21 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Parse Connection Variables
+      id: parse_vars
+      run: |
+        # Extraer de forma limpia la IP y el Usuario desde tu secret VARIABLES_AX
+        HOST=$(echo "${{ secrets.VARIABLES_AX }}" | grep '^VPS_HOST=' | cut -d'=' -f2 | tr -d '\r ')
+        USER=$(echo "${{ secrets.VARIABLES_AX }}" | grep '^VPS_USER=' | cut -d'=' -f2 | tr -d '\r ')
+        
+        echo "vps_host=$HOST" >> $GITHUB_OUTPUT
+        echo "vps_user=$USER" >> $GITHUB_OUTPUT
+
     - name: Copy project files to VPS via SCP
       uses: appleboy/scp-action@v0.1.7
       with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
+        host: ${{ steps.parse_vars.outputs.vps_host }}
+        username: ${{ steps.parse_vars.outputs.vps_user }}
         key: ${{ secrets.VPS_KEY }}
         source: "."
         target: "/var/www/clinica-psiquiatrica-api"
@@ -24,20 +34,20 @@ jobs:
     - name: Executing remote SSH commands to deploy
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
+        host: ${{ steps.parse_vars.outputs.vps_host }}
+        username: ${{ steps.parse_vars.outputs.vps_user }}
         key: ${{ secrets.VPS_KEY }}
         script: |
           set -e
           cd /var/www/clinica-psiquiatrica-api
           
-          # Inyectar variables de entorno actualizadas desde los Secrets de GitHub
-          printf "%s" "${{ secrets.ENV_FILE }}" > .env
+          # Filtra las variables exclusivas de la App para armar el .env limpio sin las de VPS
+          echo "${{ secrets.VARIABLES_AX }}" | grep -v '^VPS_' > .env
 
-          # Instalar dependencias de producción y compilar la solución
+          # Instalar dependencias y compilar
           npm install
           npm run build
 
-          # Reinicio controlado en PM2 para evitar caídas de servicio
+          # Reinicio en PM2
           pm2 reload clinica-api || pm2 start dist/main.js --name "clinica-api"
           pm2 save
